@@ -8,29 +8,22 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 const Header = () => {
-  const { user, isDispatcher, isDriver, signOut } = useAuth();
+  const { user, isDispatcher, signOut } = useAuth();
+  
+  // Only show header for dispatchers
+  if (!isDispatcher) return null;
+  
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="container flex h-14 items-center justify-between">
-        <Link to="/" className="font-semibold tracking-tight">
+    <header className="app-header hidden md:block">
+      <div className="desktop-container flex h-16 items-center justify-between">
+        <Link to="/" className="font-semibold tracking-tight text-lg">
           Гранд Партнер АС — Логистика
         </Link>
-        <nav className="hidden md:flex items-center gap-1">
-          <NavLink to="/" className={navLinkClass}>
-            Почетна
-          </NavLink>
-          {isDispatcher && (
-            <>
-              <NavLink to="/dispecer" className={navLinkClass}>Диспечер</NavLink>
-              <NavLink to="/klienti" className={navLinkClass}>Клиенти</NavLink>
-              <NavLink to="/produkti" className={navLinkClass}>Производи</NavLink>
-              <NavLink to="/naracki" className={navLinkClass}>Нарачки</NavLink>
-              <NavLink to="/ruti" className={navLinkClass}>Рути</NavLink>
-            </>
-          )}
-          {isDriver && (
-            <NavLink to="/vozac" className={navLinkClass}>Возач</NavLink>
-          )}
+        <nav className="flex items-center gap-1">
+          <NavLink to="/dispecer" className={navLinkClass}>Диспечер</NavLink>
+          <NavLink to="/klienti" className={navLinkClass}>Клиенти</NavLink>
+          <NavLink to="/naracki" className={navLinkClass}>Нарачки</NavLink>
+          <NavLink to="/ruti" className={navLinkClass}>Рути</NavLink>
         </nav>
         <div className="flex items-center gap-2">
           {!user ? (

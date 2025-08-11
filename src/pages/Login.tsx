@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { Mail, Lock, Truck, Users } from "lucide-react";
 
 const Login = () => {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -45,49 +46,109 @@ const Login = () => {
   };
 
   return (
-    <main className="container py-8 max-w-md">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-accent/5 p-4">
       <SEO
         title="Најава — Гранд Партнер АС"
         description="Најава и регистрација за диспечери и возачи."
         canonical="https://07df5133-d711-4d7b-9d29-cf9c152e0817.lovableproject.com/najava"
       />
-      <h1 className="text-3xl font-semibold mb-4">{mode === "login" ? "Најава" : "Регистрација"}</h1>
-      <div className="mb-4 flex gap-2">
-        <Button variant={mode === "login" ? "default" : "outline"} size="sm" onClick={() => setMode("login")}>
-          Најава
-        </Button>
-        <Button variant={mode === "signup" ? "default" : "outline"} size="sm" onClick={() => setMode("signup")}>
-          Регистрација
-        </Button>
+      
+      <div className="w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mr-3">
+              <Truck className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Гранд Партнер АС — Логистика
+            </h1>
+          </div>
+          <div className="flex justify-center gap-1 mb-6">
+            <Button 
+              variant={mode === "login" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setMode("login")}
+              className="rounded-full"
+            >
+              Најава
+            </Button>
+            <Button 
+              variant={mode === "signup" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setMode("signup")}
+              className="rounded-full"
+            >
+              Регистрација
+            </Button>
+          </div>
+        </div>
+
+        {/* Form Card */}
+        <div className="mobile-card bg-white/80 backdrop-blur-sm">
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Е-пошта
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="email"
+                  className="w-full h-12 pl-10 pr-4 rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                  placeholder="Внесете ја вашата е-пошта"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Лозинка
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="password"
+                  className="w-full h-12 pl-10 pr-4 rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                  placeholder="Внесете ја вашата лозинка"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <Button 
+              type="submit" 
+              disabled={loading}
+              className="w-full h-12 text-base font-medium"
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Се праќа...
+                </div>
+              ) : (
+                mode === "login" ? "Најави се" : "Регистрирај се"
+              )}
+            </Button>
+          </form>
+          
+          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  По најава, интерфејсот ќе се прилагоди според вашата улога (возач/диспечер).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <form onSubmit={onSubmit} className="grid gap-3">
-        <label className="grid gap-1">
-          <span className="text-sm">Е-пошта</span>
-          <input
-            type="email"
-            className="h-10 rounded-md border bg-background px-3"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-sm">Лозинка</span>
-          <input
-            type="password"
-            className="h-10 rounded-md border bg-background px-3"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        <Button type="submit" disabled={loading}>
-          {loading ? "Се праќа..." : mode === "login" ? "Најави се" : "Регистрирај се"}
-        </Button>
-      </form>
-      <p className="mt-3 text-sm text-muted-foreground">
-        По најава, интерфејсот ќе се прилагоди според вашата улога (возач/диспечер).
-      </p>
     </main>
   );
 };

@@ -1,24 +1,66 @@
 import { NavLink } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
+import { 
+  Truck, 
+  MapPin, 
+  User,
+  Route
+} from "lucide-react";
 
 export const BottomNav = () => {
   const isMobile = useIsMobile();
-  const { isDriver } = useAuth();
+  const { isDriver, user } = useAuth();
 
-  if (!isMobile || !isDriver) return null;
+  // Only show for mobile drivers
+  if (!isMobile || !isDriver || !user) return null;
 
   const linkCls = ({ isActive }: { isActive: boolean }) =>
-    `flex-1 grid place-items-center text-sm py-2 ${
-      isActive ? "text-primary" : "text-muted-foreground"
-    }`;
+    `mobile-nav-item ${isActive ? "active" : ""}`;
+
+  const iconCls = ({ isActive }: { isActive: boolean }) =>
+    `mobile-nav-icon ${isActive ? "text-primary" : "text-muted-foreground"}`;
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto max-w-xl flex">
-        <NavLink to="/vozac" end className={linkCls}>
-          Мојата тура
-        </NavLink>
+    <nav className="mobile-nav">
+      <div className="mobile-container">
+        <div className="flex justify-around">
+          <NavLink to="/vozac" className={linkCls}>
+            {({ isActive }) => (
+              <>
+                <Truck className={iconCls({ isActive })} />
+                <span className="mobile-nav-text">Денешна тура</span>
+              </>
+            )}
+          </NavLink>
+          
+          <NavLink to="/vozac/ruti" className={linkCls}>
+            {({ isActive }) => (
+              <>
+                <Route className={iconCls({ isActive })} />
+                <span className="mobile-nav-text">Мои рути</span>
+              </>
+            )}
+          </NavLink>
+          
+          <NavLink to="/vozac/map" className={linkCls}>
+            {({ isActive }) => (
+              <>
+                <MapPin className={iconCls({ isActive })} />
+                <span className="mobile-nav-text">Мапа</span>
+              </>
+            )}
+          </NavLink>
+          
+          <NavLink to="/vozac/profile" className={linkCls}>
+            {({ isActive }) => (
+              <>
+                <User className={iconCls({ isActive })} />
+                <span className="mobile-nav-text">Профил</span>
+              </>
+            )}
+          </NavLink>
+        </div>
       </div>
     </nav>
   );

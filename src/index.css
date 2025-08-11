@@ -92,7 +92,6 @@ All colors MUST be HSL.
   }
 }
 
-
 @layer base {
   * {
     @apply border-border;
@@ -100,5 +99,212 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    /* Mobile-first viewport */
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+  }
+
+  /* Mobile-specific styles */
+  @media (max-width: 768px) {
+    html {
+      font-size: 16px; /* Larger base font for better mobile readability */
+    }
+    
+    body {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: text; /* Allow text selection on mobile */
+      user-select: text;
+    }
+  }
+
+  /* Tablet and desktop styles */
+  @media (min-width: 769px) {
+    html {
+      font-size: 16px;
+    }
+  }
+}
+
+/* Mobile-first layout utilities */
+@layer components {
+  .mobile-container {
+    @apply max-w-md mx-auto px-4;
+  }
+  
+  .tablet-container {
+    @apply max-w-2xl mx-auto px-6;
+  }
+  
+  .desktop-container {
+    @apply max-w-7xl mx-auto px-8;
+  }
+  
+  .app-header {
+    @apply sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/95;
+  }
+  
+  .mobile-nav {
+    @apply fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/95;
+    height: 80px; /* Larger bottom nav for better touch targets */
+    padding: 12px 0;
+  }
+  
+  .mobile-content {
+    @apply pb-24; /* More space for larger bottom navigation */
+  }
+  
+  .desktop-content {
+    @apply pb-6;
+  }
+  
+  /* Card styles for mobile - improved for touch */
+  .mobile-card {
+    @apply rounded-xl border bg-card shadow-sm;
+    padding: 20px; /* Larger padding for better mobile experience */
+    margin-bottom: 16px;
+  }
+  
+  .mobile-card-interactive {
+    @apply mobile-card transition-all duration-200 active:scale-[0.98] hover:shadow-md;
+    min-height: 60px; /* Minimum touch target size */
+  }
+  
+  /* Mobile-optimized form elements */
+  .mobile-input {
+    @apply w-full rounded-lg border bg-background px-4 py-3 text-base;
+    min-height: 48px; /* Apple recommended minimum touch target */
+  }
+  
+  .mobile-button {
+    @apply rounded-lg px-6 py-3 font-medium transition-colors;
+    min-height: 48px;
+    min-width: 48px;
+  }
+  
+  .mobile-button-primary {
+    @apply mobile-button bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+  
+  .mobile-button-secondary {
+    @apply mobile-button bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+  
+  .mobile-button-outline {
+    @apply mobile-button border border-input bg-background hover:bg-accent hover:text-accent-foreground;
+  }
+}
+
+/* Mobile-specific responsive improvements */
+@layer utilities {
+  /* Improved mobile typography */
+  @media (max-width: 768px) {
+    .text-xs { font-size: 0.8rem; }
+    .text-sm { font-size: 0.9rem; }
+    .text-base { font-size: 1rem; }
+    .text-lg { font-size: 1.2rem; }
+    .text-xl { font-size: 1.4rem; }
+    .text-2xl { font-size: 1.8rem; }
+    .text-3xl { font-size: 2.2rem; }
+    
+    /* Better mobile grid layouts */
+    .mobile-grid-1 { 
+      display: grid; 
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+    
+    .mobile-grid-2 { 
+      display: grid; 
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+    
+    /* Mobile-specific spacing */
+    .mobile-spacing > * + * {
+      margin-top: 1rem;
+    }
+    
+    .mobile-spacing-large > * + * {
+      margin-top: 1.5rem;
+    }
+    
+    /* Mobile forms */
+    input, select, textarea, button {
+      font-size: 16px !important; /* Prevent zoom on iOS */
+    }
+    
+    .mobile-form-group {
+      margin-bottom: 1.5rem;
+    }
+    
+    .mobile-form-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      font-size: 1rem;
+    }
+    
+    /* Better mobile buttons */
+    .mobile-action-row {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    
+    .mobile-action-row button {
+      flex: 1;
+      min-height: 48px;
+      font-size: 1rem;
+    }
+    
+    /* Mobile stats cards */
+    .mobile-stat-card {
+      padding: 1.5rem;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+      border-radius: 1rem;
+      color: white;
+      margin-bottom: 1rem;
+    }
+    
+    .mobile-stat-value {
+      font-size: 2.5rem;
+      font-weight: 800;
+      line-height: 1;
+      margin: 0.5rem 0;
+    }
+    
+    .mobile-stat-label {
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+    
+    /* Mobile navigation improvements */
+    .mobile-nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60px;
+      padding: 0.5rem;
+      text-decoration: none;
+      color: var(--muted-foreground);
+      transition: color 0.2s;
+    }
+    
+    .mobile-nav-item.active {
+      color: var(--primary);
+    }
+    
+    .mobile-nav-icon {
+      width: 1.5rem;
+      height: 1.5rem;
+      margin-bottom: 0.25rem;
+    }
+    
+    .mobile-nav-text {
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
   }
 }
