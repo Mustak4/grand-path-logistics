@@ -27,7 +27,6 @@ interface ClientVM {
   lat?: number;
   lng?: number;
   telefon?: string;
-  tip_napalata: "fiskalna" | "faktura";
   napomena?: string;
 }
 
@@ -47,7 +46,6 @@ const Clients = () => {
     lat: "",
     lng: "",
     telefon: "",
-    tip_napalata: "fiskalna" as "fiskalna" | "faktura",
     napomena: ""
   });
 
@@ -61,7 +59,7 @@ const Clients = () => {
       
       const { data, error } = await supabase
         .from("clients")
-        .select("id, ime, naseleno_mesto, adresa, lat, lng, telefon, tip_naplata, zabeleshka")
+        .select("id, ime, naseleno_mesto, adresa, lat, lng, telefon, zabeleshka")
         .order("ime");
         
       if (error) throw error;
@@ -91,7 +89,6 @@ const Clients = () => {
         lat: form.lat ? parseFloat(form.lat) : null,
         lng: form.lng ? parseFloat(form.lng) : null,
         telefon: form.telefon || null,
-        tip_naplata: form.tip_napalata,
         zabeleshka: form.napomena || null
       };
       
@@ -146,44 +143,33 @@ const Clients = () => {
 
   const editClient = (client: ClientVM) => {
     setEditingClient(client);
-    setForm({
-      ime: client.ime,
-      naseleno_mesto: client.naseleno_mesto,
-      adresa: client.adresa,
-      lat: client.lat ? client.lat.toString() : "",
-      lng: client.lng ? client.lng.toString() : "",
-      telefon: client.telefon || "",
-      tip_napalata: client.tip_napalata,
-      napomena: client.napomena || ""
-    });
+            setForm({
+          ime: client.ime,
+          naseleno_mesto: client.naseleno_mesto,
+          adresa: client.adresa,
+          lat: client.lat ? client.lat.toString() : "",
+          lng: client.lng ? client.lng.toString() : "",
+          telefon: client.telefon || "",
+          napomena: client.napomena || ""
+        });
     setShowForm(true);
   };
 
   const resetForm = () => {
-    setForm({
-      ime: "",
-      naseleno_mesto: "",
-      adresa: "",
-      lat: "",
-      lng: "",
-      telefon: "",
-      tip_napalata: "fiskalna",
-      napomena: ""
-    });
+            setForm({
+          ime: "",
+          naseleno_mesto: "",
+          adresa: "",
+          lat: "",
+          lng: "",
+          telefon: "",
+          napomena: ""
+        });
     setEditingClient(null);
     setShowForm(false);
   };
 
-  const getTipText = (tip: string) => {
-    switch (tip) {
-      case "fiskalna":
-        return "Фискална";
-      case "faktura":
-        return "Фактура";
-      default:
-        return tip;
-    }
-  };
+
 
   const filteredClients = clients.filter(client =>
     client.ime.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -328,17 +314,7 @@ const Clients = () => {
                 />
               </div>
               
-              <div className="mobile-form-group">
-                <label className="mobile-form-label">Тип наплата</label>
-                <select
-                  className="mobile-input"
-                  value={form.tip_napalata}
-                  onChange={(e) => setForm({ ...form, tip_napalata: e.target.value as any })}
-                >
-                  <option value="fiskalna">Фискална</option>
-                  <option value="faktura">Фактура</option>
-                </select>
-              </div>
+
               
               <div className="mobile-form-group">
                 <label className="mobile-form-label">Напомена</label>
@@ -405,9 +381,7 @@ const Clients = () => {
                     
                     <div className="flex items-center gap-4 text-sm mb-2">
                       <span className="text-muted-foreground">{client.adresa}</span>
-                      <span className="text-muted-foreground">
-                        {getTipText(client.tip_napalata)}
-                      </span>
+
                       {client.napomena && (
                         <span className="text-muted-foreground italic">
                           {client.napomena}

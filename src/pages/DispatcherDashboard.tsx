@@ -18,6 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { RealtimeChannel } from "@supabase/supabase-js";
 
 interface DashboardStats {
   todayOrders: number;
@@ -39,19 +40,40 @@ const DispatcherDashboard = () => {
     const loadStats = async () => {
       try {
         setLoading(true);
-        
-        // For testing, use mock data
+
+        // Today's date (date-only, compare by date part of timestamptz)
+        const todayIso = new Date().toISOString().slice(0, 10);
+
+        // Orders today
+        const { data: ordersData, error: ordersError } = await supabase
+          .from("orders")
+          .select("id, suma, datum")
+          .gte("datum", `${todayIso} 00:00`)
+          .lte("datum", `${todayIso} 23:59:59`);
+        if (ordersError) throw ordersError;
+
+        // Active routes
+        const { data: routesData, error: routesError } = await supabase
+          .from("routes")
+          .select("id")
+          .eq("status", "aktivna");
+        if (routesError) throw routesError;
+
+        // All drivers (vozac)
+        const { data: driversData, error: driversError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("uloga", "vozac");
+        if (driversError) throw driversError;
+
+        const totalRevenue = (ordersData || []).reduce((sum: number, o: any) => sum + Number(o.suma || 0), 0);
+
         setStats({
-          todayOrders: 24,
-          activeRoutes: 8,
-          activeDrivers: 12,
-          totalRevenue: 245600
+          todayOrders: ordersData?.length || 0,
+          activeRoutes: routesData?.length || 0,
+          activeDrivers: driversData?.length || 0,
+          totalRevenue
         });
-        
-        // Comment out real Supabase calls for now
-        // const today = new Date().toISOString().slice(0, 10);
-        // ... rest of original code
-        
       } catch (error) {
         console.error("Error loading dashboard stats:", error);
         toast.error("Грешка при вчитување на статистики");
@@ -61,6 +83,27 @@ const DispatcherDashboard = () => {
     };
 
     loadStats();
+    // Realtime: refresh stats on any change to orders/routes/stops
+    const chOrders: RealtimeChannel = supabase
+      .channel('rt-dashboard-orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadStats())
+      .subscribe();
+
+    const chRoutes: RealtimeChannel = supabase
+      .channel('rt-dashboard-routes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'routes' }, () => loadStats())
+      .subscribe();
+
+    const chStops: RealtimeChannel = supabase
+      .channel('rt-dashboard-stops')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stops' }, () => loadStats())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chOrders);
+      supabase.removeChannel(chRoutes);
+      supabase.removeChannel(chStops);
+    };
   }, []);
 
   return (
@@ -177,6 +220,42 @@ const DispatcherDashboard = () => {
               <span className="text-sm md:text-base">Рути</span>
             </Link>
           </Button>
+        </div>
+      </section>
+
+      {/* Quick Route Creation */}
+      <section className="mobile-card mb-6">
+        <h3 className="text-lg font-semibold mb-4">Брзо креирање на рута</h3>
+        <div className="mobile-spacing">
+          <div className="mobile-form-group">
+            <label className="mobile-form-label">Изберете возач</label>
+            <select className="mobile-input" id="driver-select">
+              <option value="">— Изберете возач —</option>
+              {/* Will be populated with real drivers */}
+            </select>
+          </div>
+          
+          <div className="mobile-form-group">
+            <label className="mobile-form-label">Изберете нарачки за денес</label>
+            <div className="border rounded-lg p-3 bg-muted/30">
+              <p className="text-sm text-muted-foreground mb-2">
+                💡 Изберете нарачки од листата на нарачки и креирајте рута
+              </p>
+              <Button asChild className="mobile-button-primary w-full">
+                <Link to="/naracki">
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Изберете нарачки
+                </Link>
+              </Button>
+            </div>
+          </div>
+          
+          <div className="mobile-action-row">
+            <Button className="mobile-button-primary w-full">
+              <Map className="w-4 h-4 mr-2" />
+              Креирај рута
+            </Button>
+          </div>
         </div>
       </section>
 

@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Calendar, MapPin, DollarSign, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RouteVM {
   id: string;
@@ -22,14 +23,37 @@ const DriverRoutes = () => {
     const loadDriverRoutes = async () => {
       try {
         setLoading(true);
-        // Mock data for testing - only routes assigned to this driver
-        const mockRoutes: RouteVM[] = [
-          { id: "1", datum: "2025-08-08", status: "aktivna", stops_count: 5, total_amount: 12500 },
-          { id: "2", datum: "2025-08-07", status: "zavrsena", stops_count: 4, total_amount: 9200 },
-          { id: "3", datum: "2025-08-06", status: "zavrsena", stops_count: 3, total_amount: 7800 }
-        ];
-        setRoutes(mockRoutes);
-        // In real implementation, this would fetch routes where vozac_id = user.id
+        if (!user) return;
+        const { data: routesData, error: routesError } = await supabase
+          .from("routes")
+          .select("id, datum, status")
+          .eq("vozac_id", user.id)
+          .order("datum", { ascending: false })
+          .limit(50);
+        if (routesError) throw routesError;
+
+        const routeIds = (routesData || []).map((r: any) => r.id);
+        let stopsAgg: Record<string, { count: number; total: number }> = {};
+        if (routeIds.length > 0) {
+          const { data: stopsData, error: stopsError } = await supabase
+            .from("stops")
+            .select("ruta_id, suma_za_naplata").in("ruta_id", routeIds);
+          if (stopsError) throw stopsError;
+          (stopsData || []).forEach((s: any) => {
+            if (!stopsAgg[s.ruta_id]) stopsAgg[s.ruta_id] = { count: 0, total: 0 };
+            stopsAgg[s.ruta_id].count += 1;
+            stopsAgg[s.ruta_id].total += Number(s.suma_za_naplata || 0);
+          });
+        }
+
+        const mapped: RouteVM[] = (routesData || []).map((r: any) => ({
+          id: r.id,
+          datum: r.datum,
+          status: r.status,
+          stops_count: stopsAgg[r.id]?.count || 0,
+          total_amount: stopsAgg[r.id]?.total || 0
+        }));
+        setRoutes(mapped);
       } catch (error: any) {
         console.error("Error loading driver routes:", error);
         toast.error("Грешка при вчитување на рутите");

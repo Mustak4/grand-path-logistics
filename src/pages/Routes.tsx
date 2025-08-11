@@ -123,12 +123,12 @@ const RoutesPage = () => {
         console.log("Drivers data:", driversData, "Error:", driversError);
         if (driversError) throw driversError;
         
-        // Load orders for order assignment - simplified query
+        // Load orders for order assignment
         const { data: ordersData, error: ordersError } = await supabase
           .from("orders")
-          .select("id, datum, suma, klient_id")
+          .select(`id, datum, suma, klient_id, clients!inner(ime)`) // join client name
           .order("datum", { ascending: false })
-          .limit(20);
+          .limit(50);
           
         console.log("Orders data:", ordersData, "Error:", ordersError);
         if (ordersError) throw ordersError;
@@ -146,7 +146,7 @@ const RoutesPage = () => {
         const clientMap = new Map(clientsData.map(c => [c.id, c.ime]));
         
         // Load stops count and total amount for each route
-        let stopsData = [];
+        let stopsData: any[] = [];
         if (routesData && routesData.length > 0) {
           const routeIds = routesData.map(r => r.id);
           const { data: stopsResult, error: stopsError } = await supabase
@@ -218,9 +218,9 @@ const RoutesPage = () => {
       const { data, error } = await supabase
         .from("routes")
         .insert({
-          datum: form.date,
-          vozac_id: form.driver,
-          status: form.status,
+        datum: form.date,
+        vozac_id: form.driver,
+        status: form.status,
           vozilo: null // Can be added later
         })
         .select()
@@ -488,7 +488,7 @@ const RoutesPage = () => {
               <div key={route.id} className="mobile-card-interactive">
                 <div className="flex flex-col gap-3">
                   {/* Header with date and driver */}
-                  <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
                       <span className="font-medium text-lg">
@@ -498,9 +498,9 @@ const RoutesPage = () => {
                     <span className={`px-3 py-1 rounded-full text-xs border ${getStatusColor(route.status)} flex items-center gap-1`}>
                       {getStatusIcon(route.status)}
                       <span>{getStatusText(route.status)}</span>
-                    </span>
-                  </div>
-                  
+                      </span>
+                    </div>
+                    
                   {/* Driver and stats */}
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
@@ -517,33 +517,33 @@ const RoutesPage = () => {
                   
                   {/* Action buttons */}
                   <div className="flex gap-2 mt-2">
-                    {route.status === "draft" && (
-                      <Button 
-                        size="sm" 
-                        onClick={() => updateRouteStatus(route.id, "aktivna")}
+                      {route.status === "draft" && (
+                        <Button 
+                          size="sm" 
+                          onClick={() => updateRouteStatus(route.id, "aktivna")}
                         className="flex-1"
-                      >
+                        >
                         ▶️ Активирај
-                      </Button>
-                    )}
-                    
-                    {route.status === "aktivna" && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => updateRouteStatus(route.id, "zavrsena")}
+                        </Button>
+                      )}
+                      
+                      {route.status === "aktivna" && (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => updateRouteStatus(route.id, "zavrsena")}
                         className="flex-1"
-                      >
+                        >
                         ✅ Заврши
-                      </Button>
-                    )}
-                    
+                        </Button>
+                      )}
+                      
                     <Button asChild size="sm" variant="outline" className="flex-1">
-                      <Link to={`/ruti/${route.id}`}>
+                        <Link to={`/ruti/${route.id}`}>
                         <ArrowRight className="w-4 h-4 mr-1" />
                         Детали
-                      </Link>
-                    </Button>
+                        </Link>
+                      </Button>
                   </div>
                 </div>
               </div>

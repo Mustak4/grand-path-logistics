@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { RealtimeChannel } from "@supabase/supabase-js";
 import { 
   MapPin, 
   Navigation, 
@@ -24,9 +25,14 @@ interface StopVM {
   adresa: string;
   naseleno_mesto: string;
   napomena?: string;
+  lat?: number | null;
+  lng?: number | null;
 }
 
-const toMaps = (q: string) => `https://www.google.com/maps?q=${encodeURIComponent(q)}`;
+const toMaps = (lat?: number | null, lng?: number | null, q?: string) =>
+  lat && lng
+    ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+    : `https://www.google.com/maps?q=${encodeURIComponent(q || "")}`;
 
 const DriverToday = () => {
   const { user } = useAuth();
@@ -44,49 +50,47 @@ const DriverToday = () => {
       try {
         setLoading(true);
         setError(null);
-        
-        // For testing, create some mock data
-        const mockStops: StopVM[] = [
-          {
-            id: "1",
-            redosled: 1,
-            status: "na_cekane",
-            suma: 2500,
-            klient: "Маркет Нова",
-            adresa: "Бул. Илинден 12",
-            naseleno_mesto: "Скопје",
-            napomena: "Достава до 14:00"
-          },
-          {
-            id: "2",
-            redosled: 2,
-            status: "zavrseno",
-            suma: 1800,
-            klient: "Ресторан Стар",
-            adresa: "Ул. Македонија 45",
-            naseleno_mesto: "Скопје",
-            napomena: "Внимателно со пакетот"
-          },
-          {
-            id: "3",
-            redosled: 3,
-            status: "na_cekane",
-            suma: 3200,
-            klient: "Кафе Бар Централ",
-            adresa: "Плоштад Македонија 8",
-            naseleno_mesto: "Скопје",
-            napomena: "Термички пакет"
-          }
-        ];
-        
-        setStops(mockStops);
-        setRouteId("test-route");
-        
-        // Comment out the real Supabase call for now
-        // if (!user) return;
-        // const today = new Date().toISOString().slice(0, 10);
-        // ... rest of the original code
-        
+        if (!user) return;
+        const today = new Date().toISOString().slice(0, 10);
+        // Find today's active route for this driver
+        const { data: route, error: routeError } = await supabase
+          .from("routes")
+          .select("id")
+          .eq("vozac_id", user.id)
+          .eq("datum", today)
+          .in("status", ["aktivna", "draft"]) // allow draft for pre-start
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        if (routeError) throw routeError;
+        if (!route) {
+          setStops([]);
+          setRouteId(null);
+          return;
+        }
+        setRouteId(route.id);
+
+        // Load stops with order + client information
+        const { data: stopsData, error: stopsError } = await supabase
+          .from("stops")
+          .select(`id, redosled, status, suma_za_naplata, orders:naracka_id( zabeleshka, clients:klient_id( ime, adresa, naseleno_mesto, lat, lng ) )`)
+          .eq("ruta_id", route.id)
+          .order("redosled");
+        if (stopsError) throw stopsError;
+
+        const mapped: StopVM[] = (stopsData || []).map((s: any) => ({
+          id: s.id,
+          redosled: s.redosled,
+          status: s.status,
+          suma: Number(s.suma_za_naplata || 0),
+          klient: s.orders?.clients?.ime || "—",
+          adresa: s.orders?.clients?.adresa || "",
+          naseleno_mesto: s.orders?.clients?.naseleno_mesto || "",
+          napomena: s.orders?.zabeleshka || undefined,
+          lat: s.orders?.clients?.lat ?? null,
+          lng: s.orders?.clients?.lng ?? null
+        }));
+        setStops(mapped);
       } catch (e: any) {
         console.error("Error loading route:", e);
         setError(e.message || "Грешка при вчитување на турата");
@@ -95,17 +99,50 @@ const DriverToday = () => {
         setLoading(false);
       }
     };
-    
-    loadTodayRoute();
+    if (user) loadTodayRoute();
   }, [user]);
+
+  // Realtime: refresh stops when dispatcher updates them
+  useEffect(() => {
+    if (!routeId) return;
+    let channel: RealtimeChannel | null = null;
+    channel = supabase
+      .channel(`stops-route-${routeId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stops', filter: `ruta_id=eq.${routeId}` }, () => {
+        // Reload stops on any change
+        (async () => {
+          const { data: stopsData } = await supabase
+            .from('stops')
+            .select(`id, redosled, status, suma_za_naplata, orders:naracka_id( zabeleshka, clients:klient_id( ime, adresa, naseleno_mesto, lat, lng ) )`)
+            .eq('ruta_id', routeId)
+            .order('redosled');
+          const mapped: StopVM[] = (stopsData || []).map((s: any) => ({
+            id: s.id,
+            redosled: s.redosled,
+            status: s.status,
+            suma: Number(s.suma_za_naplata || 0),
+            klient: s.orders?.clients?.ime || '—',
+            adresa: s.orders?.clients?.adresa || '',
+            naseleno_mesto: s.orders?.clients?.naseleno_mesto || '',
+            napomena: s.orders?.zabeleshka || undefined,
+            lat: s.orders?.clients?.lat ?? null,
+            lng: s.orders?.clients?.lng ?? null,
+          }));
+          setStops(mapped);
+        })();
+      })
+      .subscribe();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [routeId]);
 
   const markDone = async (id: string) => {
     try {
-      // For testing, just update local state
-      setStops((prev) => prev.map((s) => 
-        s.id === id ? { ...s, status: "zavrseno" } : s
-      ));
-      
+      const { error } = await supabase.from("stops").update({ status: "zavrseno" }).eq("id", id);
+      if (error) throw error;
+      setStops((prev) => prev.map((s) => (s.id === id ? { ...s, status: "zavrseno" } : s)));
       toast.success("Доставата е означена како завршена");
     } catch (error: any) {
       console.error("Error marking stop as done:", error);
@@ -115,15 +152,34 @@ const DriverToday = () => {
 
   const markSkipped = async (id: string) => {
     try {
-      // For testing, just update local state
-      setStops((prev) => prev.map((s) => 
-        s.id === id ? { ...s, status: "preskoknato" } : s
-      ));
-      
+      const { error } = await supabase.from("stops").update({ status: "preskoknato" }).eq("id", id);
+      if (error) throw error;
+      setStops((prev) => prev.map((s) => (s.id === id ? { ...s, status: "preskoknato" } : s)));
       toast.success("Доставата е означена како прескокната");
     } catch (error: any) {
       console.error("Error marking stop as skipped:", error);
       toast.error("Неуспешно означување");
+    }
+  };
+
+  const allCompleted = stops.length > 0 && stops.every((s) => s.status === "zavrseno" || s.status === "preskoknato");
+
+  const moveStop = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    const reordered = [...stops];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    // Recompute redosled starting from 1
+    const updated = reordered.map((s, idx) => ({ ...s, redosled: idx + 1 }));
+    setStops(updated);
+    try {
+      // Persist new order
+      const updates = updated.map((s) => ({ id: s.id, redosled: s.redosled }));
+      const { error } = await supabase.from('stops').upsert(updates, { onConflict: 'id' });
+      if (error) throw error;
+      toast.success('Редоследот е ажуриран');
+    } catch (e) {
+      toast.error('Грешка при ажурирање на редослед');
     }
   };
 
@@ -258,7 +314,7 @@ const DriverToday = () => {
                           className="h-8 px-3"
                         >
                           <a 
-                            href={toMaps(`${stop.adresa}, ${stop.naseleno_mesto}`)} 
+                            href={toMaps(stop.lat, stop.lng, `${stop.adresa}, ${stop.naseleno_mesto}`)} 
                             target="_blank" 
                             rel="noreferrer"
                           >
@@ -286,6 +342,15 @@ const DriverToday = () => {
                               <AlertCircle className="w-4 h-4 mr-1" />
                               Прескокни
                             </Button>
+                            {/* Simple reorder controls */}
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => moveStop(index, Math.max(0, index - 1))}>
+                                ↑
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => moveStop(index, Math.min(stops.length - 1, index + 1))}>
+                                ↓
+                              </Button>
+                            </div>
                           </>
                         )}
                       </div>
@@ -310,6 +375,24 @@ const DriverToday = () => {
               </div>
             </div>
           </div>
+
+          {allCompleted && (
+            <div className="mobile-card bg-green-50 border-green-200 text-center">
+              <div className="flex items-center justify-center mb-3">
+                <CheckCircle className="w-6 h-6 text-green-600 mr-2" />
+                <h3 className="text-lg font-semibold">Успешно Завршена Работа — Браво!</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Дали би сакале навигација за да се вратите назад во Гранд Партнер АС?
+              </p>
+              <Button asChild className="mobile-button-primary">
+                <a href={`https://www.google.com/maps/dir/?api=1&destination=41.4419365,22.6477195`} target="_blank" rel="noreferrer">
+                  <Navigation className="w-4 h-4 mr-2" />
+                  Навигација до магацин
+                </a>
+              </Button>
+            </div>
+          )}
         </>
       )}
     </main>
