@@ -5,12 +5,12 @@
 
 // Warehouse coordinates (Grand Partner AS)
 export const WAREHOUSE_COORDINATES = {
-  lat: 41.4419365,
-  lng: 22.6477195,
+  lat: 41.441814,
+  lng: 22.6503,
   address: "Grand Partner AS, Radovish, North Macedonia"
 };
 
-export const WAREHOUSE_GOOGLE_MAPS_URL = "https://www.google.com/maps/place/Grand+Partner+AS/@41.4419365,22.6477195,632m/data=!3m2!1e3!4b1!4m6!3m5!1s0x14a9fe69e88995d7:0xb4ed1cafe23add9f!8m2!3d41.4419325!4d22.6502998!16s%2Fg%2F11by__wvy6?entry=ttu";
+export const WAREHOUSE_GOOGLE_MAPS_URL = `https://www.google.com/maps/dir/?api=1&destination=${WAREHOUSE_COORDINATES.lat},${WAREHOUSE_COORDINATES.lng}`;
 
 interface Location {
   id: string;

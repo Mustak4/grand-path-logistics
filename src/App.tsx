@@ -12,6 +12,7 @@ import Clients from "./pages/Clients";
 import Orders from "./pages/Orders";
 import RoutesPage from "./pages/Routes";
 import RouteDetail from "./pages/RouteDetail";
+import RoutePrint from "./pages/RoutePrint";
 import Login from "./pages/Login";
 import DriverMap from "./pages/DriverMap";
 import DriverProfile from "./pages/DriverProfile";
@@ -97,6 +98,14 @@ const App = () => (
                   element={
                     <ProtectedRoute allowRoles={["dispecer"]}>
                       <RouteDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ruti/:id/pecati"
+                  element={
+                    <ProtectedRoute allowRoles={["dispecer"]}>
+                      <RoutePrint />
                     </ProtectedRoute>
                   }
                 />

@@ -18,6 +18,7 @@ import {
   Trash2,
   Plus
 } from "lucide-react";
+import { optimizeRoute, WAREHOUSE_COORDINATES } from "@/lib/route-optimization";
 
 interface StopVM {
   id: string;
@@ -28,6 +29,9 @@ interface StopVM {
   adresa: string;
   naseleno_mesto: string;
   napomena?: string;
+  lat?: number | null;
+  lng?: number | null;
+  orderId?: string;
 }
 
 interface RouteVM {
@@ -43,6 +47,8 @@ const RouteDetail = () => {
   const [route, setRoute] = useState<RouteVM | null>(null);
   const [stops, setStops] = useState<StopVM[]>([]);
   const [loading, setLoading] = useState(true);
+  const [suggested, setSuggested] = useState<StopVM[] | null>(null);
+  const [dndOverIndex, setDndOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const loadRouteDetails = async () => {
@@ -51,27 +57,30 @@ const RouteDetail = () => {
       try {
         setLoading(true);
         
-        // Load route with driver info
-        const { data: routeData, error: routeError } = await supabase
+        // Load route
+        const { data: routeRow, error: routeError } = await supabase
           .from("routes")
-          .select(`
-            id, 
-            datum, 
-            vozac_id, 
-            status,
-            profiles!inner(ime)
-          `)
+          .select("id, datum, vozac_id, status")
           .eq("id", id)
           .single();
-          
         if (routeError) throw routeError;
-        
+
+        let vozacIme = "—";
+        if (routeRow.vozac_id) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("ime")
+            .eq("id", routeRow.vozac_id)
+            .single();
+          if (prof?.ime) vozacIme = prof.ime;
+        }
+
         const routeVM: RouteVM = {
-          id: routeData.id,
-          datum: routeData.datum,
-          vozac_id: routeData.vozac_id,
-          status: routeData.status,
-          vozac_ime: routeData.profiles?.ime || "—"
+          id: routeRow.id,
+          datum: routeRow.datum,
+          vozac_id: routeRow.vozac_id,
+          status: routeRow.status,
+          vozac_ime: vozacIme,
         };
         
         setRoute(routeVM);
@@ -95,7 +104,7 @@ const RouteDetail = () => {
         // Load orders
         const { data: orders, error: ordersError } = await supabase
           .from("orders")
-          .select("id, suma, klient_id, napomena")
+          .select("id, suma, klient_id, zabeleshka")
           .in("id", orderIds);
           
         if (ordersError) throw ordersError;
@@ -124,7 +133,10 @@ const RouteDetail = () => {
             klient: c?.ime || "—",
             adresa: c?.adresa || "",
             naseleno_mesto: c?.naseleno_mesto || "",
-            napomena: o?.napomena || "",
+            napomena: (o as any)?.zabeleshka || "",
+            lat: c?.lat ?? null,
+            lng: c?.lng ?? null,
+            orderId: s.naracka_id
           };
         });
         
@@ -176,6 +188,95 @@ const RouteDetail = () => {
     } catch (error: any) {
       console.error("Error reordering stops:", error);
       toast.error("Грешка при промена на редоследот");
+    }
+  };
+
+  const buildSuggestion = () => {
+    try {
+      if (stops.length === 0) return;
+      const ordersForOptimization = stops.map((s) => ({
+        id: s.orderId || s.id,
+        klient_id: "",
+        suma: s.suma,
+        datum: route?.datum || "",
+        tip_napalata: "fiskalna" as const,
+        client: {
+          lat: s.lat ?? undefined,
+          lng: s.lng ?? undefined,
+          adresa: s.adresa,
+          naseleno_mesto: s.naseleno_mesto,
+        },
+      }));
+      const optimized = optimizeRoute(ordersForOptimization);
+      const idOrder = optimized.map((o) => o.id);
+      const ordered = [...stops].sort(
+        (a, b) => idOrder.indexOf(a.orderId || a.id) - idOrder.indexOf(b.orderId || b.id)
+      );
+      ordered.forEach((s, idx) => (s.redosled = idx + 1));
+      setSuggested(ordered);
+      toast.success("Предложен редослед е генериран");
+    } catch (e) {
+      console.error(e);
+      toast.error("Неуспешно генерирање на предлог");
+    }
+  };
+
+  const applySuggestion = async () => {
+    if (!suggested) return;
+    try {
+      await Promise.all(
+        suggested.map((s) =>
+          supabase.from("stops").update({ redosled: s.redosled }).eq("id", s.id)
+        )
+      );
+      setStops(suggested);
+      toast.success("Предлогот е применет");
+      setSuggested(null);
+    } catch (e) {
+      console.error(e);
+      toast.error("Грешка при примена на предлогот");
+    }
+  };
+
+  const buildNavigationUrl = () => {
+    const list = (suggested || stops).filter(
+      (s) => (s.lat && s.lng) || (s.adresa && s.naseleno_mesto)
+    );
+    if (list.length === 0) return undefined;
+    const origin = `${WAREHOUSE_COORDINATES.lat},${WAREHOUSE_COORDINATES.lng}`;
+    const enc = (s: StopVM) =>
+      s.lat && s.lng ? `${s.lat},${s.lng}` : encodeURIComponent(`${s.adresa}, ${s.naseleno_mesto}`);
+    const destination = enc(list[list.length - 1]);
+    const waypoints = list.slice(0, -1).map(enc).join("|");
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}`;
+    return url;
+  };
+
+  const onDragStart = (ev: React.DragEvent<HTMLDivElement>, index: number) => {
+    ev.dataTransfer.setData("text/plain", String(index));
+  };
+  const onDragOver = (ev: React.DragEvent<HTMLDivElement>, index: number) => {
+    ev.preventDefault();
+    setDndOverIndex(index);
+  };
+  const onDrop = async (ev: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+    ev.preventDefault();
+    setDndOverIndex(null);
+    const src = Number(ev.dataTransfer.getData("text/plain"));
+    if (Number.isNaN(src) || src === dropIndex) return;
+    const newStops = [...stops];
+    const [moved] = newStops.splice(src, 1);
+    newStops.splice(dropIndex, 0, moved);
+    newStops.forEach((s, i) => (s.redosled = i + 1));
+    setStops(newStops);
+    try {
+      const updates = newStops.map((s) => ({ id: s.id, redosled: s.redosled }));
+      const { error } = await supabase.from("stops").upsert(updates);
+      if (error) throw error;
+      toast.success("Редоследот е ажуриран");
+    } catch (e) {
+      console.error(e);
+      toast.error("Грешка при ажурирање на редослед");
     }
   };
 
@@ -254,6 +355,9 @@ const RouteDetail = () => {
           <span className={`px-3 py-1 rounded-full text-sm border ${getStatusColor(route?.status || "")}`}>
             {getStatusText(route?.status || "")}
           </span>
+          <div>
+            <a href={`/ruti/${id}/pecati`} className="text-sm underline no-underline hover:underline">Печати манифест</a>
+          </div>
         </div>
       </PageHeader>
 
@@ -282,7 +386,25 @@ const RouteDetail = () => {
 
           {/* Stops List */}
           <div className="mobile-card">
-            <h2 className="text-lg font-semibold mb-4">Стопови</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Стопови</h2>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={buildSuggestion} disabled={stops.length === 0}>
+                  Понуди најбрза рута
+                </Button>
+                {suggested && (
+                  <>
+                    <Button size="sm" onClick={applySuggestion}>Примени</Button>
+                    <Button size="sm" variant="outline" onClick={() => setSuggested(null)}>Откажи</Button>
+                  </>
+                )}
+                {stops.length > 0 && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={buildNavigationUrl()} target="_blank" rel="noreferrer">Навигација</a>
+                  </Button>
+                )}
+              </div>
+            </div>
             
             {stops.length === 0 ? (
               <div className="text-center py-8">
@@ -292,7 +414,7 @@ const RouteDetail = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {stops.map((stop, index) => (
+                {(suggested || stops).map((stop, index) => (
                   <div 
                     key={stop.id} 
                     className={`border rounded-lg p-4 ${
@@ -301,7 +423,11 @@ const RouteDetail = () => {
                         : stop.status === "preskoknato"
                         ? "bg-orange-50 border-orange-200"
                         : "bg-card"
-                    }`}
+                    } ${dndOverIndex === index ? "ring-2 ring-primary/40" : ""}`}
+                    draggable={!suggested}
+                    onDragStart={(e) => onDragStart(e, index)}
+                    onDragOver={(e) => onDragOver(e, index)}
+                    onDrop={(e) => onDrop(e, index)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
@@ -319,7 +445,7 @@ const RouteDetail = () => {
                             size="sm"
                             variant="outline"
                             onClick={() => moveStop(stop.id, "down")}
-                            disabled={index === stops.length - 1}
+                            disabled={index === (suggested || stops).length - 1}
                             className="h-6 w-6 p-0"
                           >
                             <ChevronDown className="w-3 h-3" />

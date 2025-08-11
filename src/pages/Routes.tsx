@@ -363,12 +363,13 @@ const RoutesPage = () => {
         <h2 className="text-lg md:text-xl font-semibold mb-4">Креирај нова рута</h2>
         <div className="mobile-spacing md:grid md:gap-4 md:grid-cols-4">
           <div className="mobile-form-group">
-            <label className="mobile-form-label">Датум</label>
+            <label className="mobile-form-label">Датум (dd/mm/yyyy)</label>
             <input
               type="date"
               className="mobile-input"
               value={form.date}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
+              lang="mk"
             />
           </div>
           

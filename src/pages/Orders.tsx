@@ -35,6 +35,7 @@ interface OrderVM {
 const Orders = () => {
   const [orders, setOrders] = useState<OrderVM[]>([]);
   const [clients, setClients] = useState<{ id: string; ime: string }[]>([]);
+  const [itemsByOrder, setItemsByOrder] = useState<Record<string, { ime: string; edinica: string; kolicina: number }[]>>({});
   const [drivers, setDrivers] = useState<{ id: string; ime: string }[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -49,7 +50,7 @@ const Orders = () => {
     klient_id: "",
     tip_napalata: "fiskalna" as "fiskalna" | "faktura",
     suma: "",
-    stavki: [] as Array<{ id: string; kolicina: string; edinica: "br" | "kg" | "par"; vid: string }>,
+    stavki: [] as Array<{ id: string; kolicina: string; edinica: "pak" | "par" | "kg"; vid: string }>,
     napomena: ""
   });
 
@@ -90,6 +91,29 @@ const Orders = () => {
       }));
 
       setOrders(mapped);
+
+      // Load order items for listed orders
+      const orderIds = mapped.map((m) => m.id);
+      if (orderIds.length > 0) {
+        const { data: items, error: itemsErr } = await supabase
+          .from("order_items")
+          .select(`naracka_id, kolicina, products:produkt_id(ime, edinica)`) // join products
+          .in("naracka_id", orderIds);
+        if (itemsErr) throw itemsErr;
+        const map: Record<string, { ime: string; edinica: string; kolicina: number }[]> = {};
+        (items || []).forEach((row: any) => {
+          const key = row.naracka_id as string;
+          if (!map[key]) map[key] = [];
+          map[key].push({
+            ime: row.products?.ime || "—",
+            edinica: row.products?.edinica || "",
+            kolicina: Number(row.kolicina || 0)
+          });
+        });
+        setItemsByOrder(map);
+      } else {
+        setItemsByOrder({});
+      }
     } catch (error: any) {
       console.error("Error loading orders:", error);
       toast.error("Грешка при вчитување на нарачките");
@@ -141,17 +165,75 @@ const Orders = () => {
         klient_id: form.klient_id,
         tip_naplata: form.tip_napalata,
         suma: form.tip_napalata === "fiskalna" ? Number(form.suma) : 0,
+        metod_plakanje: 'gotovo',
         zabeleshka: form.napomena || null
       } as const;
 
+      // Insert or update order and capture ID
+      let orderId: string;
       if (editingOrder) {
-        const { error } = await supabase.from("orders").update(payload).eq("id", editingOrder.id);
+        const { data, error } = await supabase
+          .from("orders")
+          .update(payload)
+          .eq("id", editingOrder.id)
+          .select("id")
+          .single();
         if (error) throw error;
+        orderId = data.id;
         toast.success("Нарачката е ажурирана");
       } else {
-        const { error } = await supabase.from("orders").insert(payload);
+        const { data, error } = await supabase
+          .from("orders")
+          .insert(payload)
+          .select("id")
+          .single();
         if (error) throw error;
+        orderId = data.id;
         toast.success("Нарачката е креирана");
+      }
+
+      // Persist order items (stavki)
+      // Prepare clean items (skip empty rows)
+      const items = form.stavki
+        .map((s) => ({
+          kolicina: parseFloat(s.kolicina || '0'),
+          edinica: s.edinica,
+          vid: (s.vid || '').trim(),
+        }))
+        .filter((s) => s.kolicina > 0 && s.vid.length > 0);
+
+      // Delete previous items on update
+      if (editingOrder) {
+        const { error: delErr } = await supabase.from("order_items").delete().eq("naracka_id", orderId);
+        if (delErr) throw delErr;
+      }
+
+      if (items.length > 0) {
+        // Ensure products exist and collect product ids
+        const productRows: { naracka_id: string; produkt_id: string; kolicina: number }[] = [];
+        for (const it of items) {
+          // Try find existing product by name + unit
+          const { data: existing, error: findErr } = await supabase
+            .from("products")
+            .select("id")
+            .eq("ime", it.vid)
+            .eq("edinica", it.edinica)
+            .limit(1);
+          if (findErr) throw findErr;
+          let productId = existing?.[0]?.id as string | undefined;
+          if (!productId) {
+            const { data: prod, error: insErr } = await supabase
+              .from("products")
+              .insert({ ime: it.vid, edinica: it.edinica, cena_po_edinica: 0 })
+              .select("id")
+              .single();
+            if (insErr) throw insErr;
+            productId = prod.id;
+          }
+          productRows.push({ naracka_id: orderId, produkt_id: productId!, kolicina: it.kolicina });
+        }
+        const { error: itemsErr } = await supabase.from("order_items").insert(productRows);
+        if (itemsErr) throw itemsErr;
       }
 
       resetForm();
@@ -165,6 +247,10 @@ const Orders = () => {
   const deleteOrder = async (id: string) => {
     if (!confirm("Дали сте сигурни дека сакате да ја избришете нарачката?")) return;
     try {
+      // Delete dependent stops first (stops has RESTRICT FK to orders)
+      const { error: stopsErr } = await supabase.from("stops").delete().eq("naracka_id", id);
+      if (stopsErr) throw stopsErr;
+      // order_items has ON DELETE CASCADE, no need to delete explicitly
       const { error } = await supabase.from("orders").delete().eq("id", id);
       if (error) throw error;
       toast.success("Нарачката е избришана");
@@ -175,25 +261,37 @@ const Orders = () => {
     }
   };
 
-  const editOrder = (order: OrderVM) => {
+  const editOrder = async (order: OrderVM) => {
     setEditingOrder(order);
+    // Load items for this order to prefill the form
+    const { data: items } = await supabase
+      .from("order_items")
+      .select(`kolicina, products:produkt_id(ime, edinica)`) // join products
+      .eq("naracka_id", order.id);
+    const stavki = (items || []).map((row: any) => ({
+      id: crypto.randomUUID(),
+      kolicina: String(row.kolicina || ''),
+      edinica: (row.products?.edinica as "pak" | "par" | "kg") || "pak",
+      vid: row.products?.ime || ""
+    }));
+
     setForm({
       datum: order.datum,
       klient_id: order.klient_id,
       tip_napalata: order.tip_napalata,
       suma: order.suma.toString(),
-      stavki: [],
+      stavki,
       napomena: order.napomena || ""
     });
     setShowForm(true);
   };
 
   const addStavka = () => {
-    const newStavka = { id: Date.now().toString(), kolicina: "", edinica: "br" as "br" | "kg" | "par", vid: "" };
+    const newStavka = { id: Date.now().toString(), kolicina: "", edinica: "pak" as "pak" | "par" | "kg", vid: "" };
     setForm({ ...form, stavki: [...form.stavki, newStavka] });
   };
 
-  const updateStavka = (id: string, field: string, value: string | "br" | "kg" | "par") => {
+  const updateStavka = (id: string, field: string, value: string | "pak" | "kg" | "par") => {
     setForm({ ...form, stavki: form.stavki.map((stavka) => (stavka.id === id ? { ...stavka, [field]: value } : stavka)) });
   };
 
@@ -259,7 +357,7 @@ const Orders = () => {
         ruta_id: routeData.id,
         naracka_id: o.id,
         redosled: index + 1,
-        status: "na_cekane",
+        status: "na_cekane" as "na_cekane",
         suma_za_naplata: o.suma || 0
       }));
       const { error: stopsError } = await supabase.from("stops").insert(stopsToCreate);
@@ -357,8 +455,15 @@ const Orders = () => {
               <h2 className="text-xl font-semibold mb-4">{editingOrder ? "Уреди нарачка" : "Нова нарачка"}</h2>
               <form onSubmit={handleSubmit} className="mobile-spacing">
                 <div className="mobile-form-group">
-                  <label className="mobile-form-label">Датум</label>
-                  <input type="date" className="mobile-input" value={form.datum} onChange={(e) => setForm({ ...form, datum: e.target.value })} required />
+                  <label className="mobile-form-label">Датум (dd/mm/yyyy)</label>
+                  <input
+                    type="date"
+                    className="mobile-input"
+                    value={form.datum}
+                    onChange={(e) => setForm({ ...form, datum: e.target.value })}
+                    required
+                    lang="mk"
+                  />
                 </div>
                 <div className="mobile-form-group">
                   <label className="mobile-form-label">Клиент</label>
@@ -411,10 +516,10 @@ const Orders = () => {
                             </div>
                             {/* Единица */}
                             <div className="col-span-2">
-                              <select className="w-full h-8 rounded border bg-background px-1 text-sm" value={stavka.edinica} onChange={(e) => updateStavka(stavka.id, "edinica", e.target.value as "br" | "kg" | "par")}>
-                                <option value="br">бр.</option>
-                                <option value="kg">кг.</option>
-                                <option value="par">пар.</option>
+                              <select className="w-full h-8 rounded border bg-background px-1 text-sm" value={stavka.edinica} onChange={(e) => updateStavka(stavka.id, "edinica", e.target.value as "pak" | "kg" | "par")}>
+                               <option value="pak">пак.</option>
+                               <option value="par">пар.</option>
+                               <option value="kg">кг.</option>
                               </select>
                             </div>
                             {/* Вид роба */}
@@ -567,6 +672,16 @@ const Orders = () => {
                           <span className="text-muted-foreground">{getTipText(order.tip_napalata)}</span>
                           {order.napomena && <span className="text-muted-foreground italic">{order.napomena}</span>}
                         </div>
+              {/* Items preview */}
+              {itemsByOrder[order.id] && itemsByOrder[order.id].length > 0 && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {itemsByOrder[order.id].map((it, idx) => (
+                    <div key={idx}>
+                      - {it.kolicina} {it.edinica}. — {it.ime}
+                    </div>
+                  ))}
+                </div>
+              )}
                       </div>
 
                       <div className="flex gap-2">

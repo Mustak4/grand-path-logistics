@@ -82,7 +82,7 @@ const Clients = () => {
     }
     
     try {
-      const clientData = {
+      const baseData = {
         ime: form.ime,
         naseleno_mesto: form.naseleno_mesto,
         adresa: form.adresa,
@@ -90,23 +90,21 @@ const Clients = () => {
         lng: form.lng ? parseFloat(form.lng) : null,
         telefon: form.telefon || null,
         zabeleshka: form.napomena || null
-      };
+      } as const;
       
       if (editingClient) {
         // Update existing client
         const { error } = await supabase
           .from("clients")
-          .update(clientData)
+          .update(baseData)
           .eq("id", editingClient.id);
-          
         if (error) throw error;
         toast.success("Клиентот е ажуриран");
       } else {
-        // Create new client
+        // Create new client (ensure tip_naplata has a value to satisfy NOT NULL)
         const { error } = await supabase
           .from("clients")
-          .insert(clientData);
-          
+          .insert({ ...baseData, tip_naplata: "faktura" });
         if (error) throw error;
         toast.success("Клиентот е креиран");
       }
