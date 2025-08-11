@@ -138,7 +138,8 @@ const RoutePrint = () => {
         <button onClick={() => window.print()} className="px-3 py-2 rounded border">Печати</button>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
+      {/* Hide header on print – show only on screen if needed */}
+      <div className="no-print" style={{ marginBottom: 12 }}>
         <div className="manifest-title">Манифест за испорака</div>
         <div className="manifest-meta">
           Датум: {new Date(datum).toLocaleDateString("mk-MK")} • Возач: {driver || "—"}
@@ -151,10 +152,7 @@ const RoutePrint = () => {
           <tr>
             <th style={{ width: 36 }}>#</th>
             <th>Клиент</th>
-            <th>Адреса</th>
-            <th>Телефон</th>
             <th>Ставки</th>
-            <th style={{ width: 90 }}>Сума</th>
           </tr>
         </thead>
         <tbody>
@@ -166,8 +164,6 @@ const RoutePrint = () => {
               <tr key={s.id}>
                 <td>{s.redosled}</td>
                 <td>{c?.ime || "—"}</td>
-                <td>{c ? `${c.adresa}, ${c.naseleno_mesto}` : "—"}</td>
-                <td>{c?.telefon || "—"}</td>
                 <td className="items">
                   {its.length === 0 ? (
                     <span>—</span>
@@ -179,7 +175,6 @@ const RoutePrint = () => {
                     </ul>
                   )}
                 </td>
-                <td>{o ? Number(o.suma || 0).toLocaleString() : 0} ден.</td>
               </tr>
             );
           })}
