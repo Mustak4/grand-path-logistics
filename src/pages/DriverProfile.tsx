@@ -1,11 +1,65 @@
 import { SEO } from "@/components/SEO";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
-import { User, Phone, Mail, Truck, Settings, LogOut } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useEffect, useState } from "react";
+import { User, Phone, Mail, Settings, LogOut } from "lucide-react";
 
 const DriverProfile = () => {
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState<string>(profile?.ime || "");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>((user as any)?.user_metadata?.avatar_url || null);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    setName(profile?.ime || "");
+    setAvatarUrl((user as any)?.user_metadata?.avatar_url || null);
+  }, [profile?.ime, user]);
+
+  const onAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file || !user) return;
+      setUploading(true);
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      setAvatarUrl(data.publicUrl);
+      toast.success("Сликата е поставена.");
+    } catch (err: any) {
+      toast.error(err.message || "Неуспешно поставување на слика (проверете дали постои bucket 'avatars').");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const updates: any = {};
+      if (name && name !== profile?.ime) updates.ime = name;
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
+        if (error) throw error;
+      }
+      await supabase.auth.updateUser({ data: { ime: name, avatar_url: avatarUrl || null } });
+      toast.success("Профилот е ажуриран.");
+      setIsEditing(false);
+    } catch (err: any) {
+      toast.error(err.message || "Неуспешно ажурирање на профил.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -25,15 +79,45 @@ const DriverProfile = () => {
         {/* Profile Card */}
         <div className="mobile-card mb-6">
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-              <User className="w-8 h-8 text-primary" />
+            <div className="w-16 h-16 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center">
+              <Avatar className="w-16 h-16">
+                <AvatarImage src={avatarUrl || undefined} alt="avatar" />
+                <AvatarFallback>
+                  <User className="w-8 h-8 text-primary" />
+                </AvatarFallback>
+              </Avatar>
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-foreground">
-                {user?.email?.split('@')[0] || 'Возач'}
-              </h2>
-              <p className="text-sm text-muted-foreground">Активен возач</p>
+            <div className="flex-1">
+              {isEditing ? (
+                <div className="flex flex-col gap-2">
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Име и презиме" />
+                  <div className="flex items-center gap-2">
+                    <input type="file" accept="image/*" onChange={onAvatarChange} />
+                    {uploading && <span className="text-xs text-muted-foreground">Се качува...</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={onSave} disabled={saving}>
+                      {saving ? "Се зачувува..." : "Зачувај"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
+                      Откажи
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold text-foreground">
+                    {name || profile?.ime || user?.email?.split('@')[0] || 'Возач'}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">Активен возач</p>
+                </>
+              )}
             </div>
+            {!isEditing && (
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                Измени
+              </Button>
+            )}
           </div>
           
           <div className="space-y-3">
@@ -43,11 +127,7 @@ const DriverProfile = () => {
             </div>
             <div className="flex items-center gap-3">
               <Phone className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm">+389 XX XXX XXX</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Truck className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm">Возило: MK-XX-XXX</span>
+              <span className="text-sm">{profile?.telefon || 'Не е поставен'}</span>
             </div>
           </div>
         </div>
@@ -60,10 +140,7 @@ const DriverProfile = () => {
               <Settings className="w-4 h-4 mr-3" />
               Нотификации
             </Button>
-            <Button variant="ghost" className="w-full justify-start">
-              <User className="w-4 h-4 mr-3" />
-              Уреди профил
-            </Button>
+            {/* Edit profile removed per requirements. Editing will be limited to name and avatar in the top section when implemented. */}
           </div>
         </div>
 
