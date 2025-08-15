@@ -53,16 +53,16 @@ const DriverToday = () => {
         if (!user) return;
         const today = new Date().toISOString().slice(0, 10);
         // Find today's active route for this driver
-        const { data: route, error: routeError } = await supabase
+        const { data: routesArr, error: routeError } = await supabase
           .from("routes")
           .select("id")
           .eq("vozac_id", user.id)
           .eq("datum", today)
           .in("status", ["aktivna", "draft"]) // allow draft for pre-start
           .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
+          .limit(1);
         if (routeError) throw routeError;
+        const route = routesArr?.[0] as { id: string } | undefined;
         if (!route) {
           setStops([]);
           setRouteId(null);
